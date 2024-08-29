@@ -347,43 +347,27 @@ public class HttpProxyServerHandler extends ChannelInboundHandlerAdapter {
             setRequestList(new LinkedList());
             setChannelFuture(bootstrap.connect(pipeRp.getHost(), pipeRp.getPort()));
             getChannelFuture().addListener((ChannelFutureListener) future -> {
-                try {
-                    if (future.isSuccess()) {
-                        future.channel().writeAndFlush(msg).addListener((ChannelFutureListener) flushFuture -> {
-                            if (!flushFuture.isSuccess()) {
-                                ReferenceCountUtil.release(msg);
-                            }
-                        });
-                        synchronized (getRequestList()) {
-                            getRequestList().forEach(obj -> future.channel().writeAndFlush(obj)
-                                    .addListener((ChannelFutureListener) flushFuture -> {
-                                ReferenceCountUtil.release(obj);
-                            }));
-                            getRequestList().clear();
-                            setIsConnect(true);
-                        }
-                    } else {
-                        synchronized (getRequestList()) {
-                            getRequestList().forEach(ReferenceCountUtil::release);
-                            getRequestList().clear();
-                        }
-                        getExceptionHandle().beforeCatch(channel, future.cause());
+                if (future.isSuccess()) {
+                    future.channel().writeAndFlush(msg);
+                    synchronized (getRequestList()) {
+                        getRequestList().forEach(obj -> future.channel().writeAndFlush(obj));
+                        getRequestList().clear();
+                        setIsConnect(true);
                     }
-                }finally {
+                } else {
+                    synchronized (getRequestList()) {
+                        getRequestList().forEach(obj -> ReferenceCountUtil.release(obj));
+                        getRequestList().clear();
+                    }
+                    getExceptionHandle().beforeCatch(channel, future.cause());
                     future.channel().close();
                     channel.close();
                 }
-
             });
         } else {
             synchronized (getRequestList()) {
                 if (getIsConnect()) {
-                    getChannelFuture().channel().writeAndFlush(msg)
-                            .addListener((ChannelFutureListener) flushFuture -> {
-                        if (!flushFuture.isSuccess()) {
-                            ReferenceCountUtil.release(msg);
-                        }
-                    });
+                    getChannelFuture().channel().writeAndFlush(msg);
                 } else {
                     getRequestList().add(msg);
                 }
