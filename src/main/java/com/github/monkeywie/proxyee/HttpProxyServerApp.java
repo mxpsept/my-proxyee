@@ -1,6 +1,9 @@
 package com.github.monkeywie.proxyee;
 
+import com.github.monkeywie.proxyee.proxy.ProxyConfig;
+import com.github.monkeywie.proxyee.proxy.ProxyType;
 import com.github.monkeywie.proxyee.server.HttpProxyServer;
+import com.github.monkeywie.proxyee.server.HttpProxyServerConfig;
 
 /**
  * @Author LiWei
@@ -14,6 +17,9 @@ public class HttpProxyServerApp {
         if (args.length > 0) {
             port = Integer.valueOf(args[0]);
         }
-        new HttpProxyServer().start(port);
+        HttpProxyServerConfig httpProxyServerConfig = new HttpProxyServerConfig();
+        httpProxyServerConfig.setHandleSsl(true);
+        new HttpProxyServer().serverConfig(httpProxyServerConfig)
+                .start(port);
     }
 }

@@ -32,6 +32,9 @@ import java.net.InetSocketAddress;
 import java.net.URL;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Queue;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public class HttpProxyServerHandler extends ChannelInboundHandlerAdapter {
 
@@ -118,6 +121,12 @@ public class HttpProxyServerHandler extends ChannelInboundHandlerAdapter {
         this.interceptInitializer = interceptInitializer;
         this.exceptionHandle = exceptionHandle;
     }
+
+    // 使用ConcurrentLinkedQueue替代LinkedList以避免手动synchronized
+    private final Queue<Object> requestQueue = new ConcurrentLinkedQueue<>();
+
+    // 定义一个原子变量来替代synchronized块，控制连接状态
+    private final AtomicBoolean isConnected = new AtomicBoolean(false);
 
 
     @Override
@@ -344,33 +353,54 @@ public class HttpProxyServerHandler extends ChannelInboundHandlerAdapter {
             } else {
                 bootstrap.resolver(getServerConfig().resolver());
             }
-            setRequestList(new LinkedList());
+
             setChannelFuture(bootstrap.connect(pipeRp.getHost(), pipeRp.getPort()));
             getChannelFuture().addListener((ChannelFutureListener) future -> {
                 if (future.isSuccess()) {
-                    future.channel().writeAndFlush(msg);
-                    synchronized (getRequestList()) {
-                        getRequestList().forEach(obj -> future.channel().writeAndFlush(obj));
-                        getRequestList().clear();
-                        setIsConnect(true);
+                    // 连接成功，写入当前消息
+                    future.channel().writeAndFlush(msg).addListener((ChannelFutureListener) flushFuture -> {
+                        if (!flushFuture.isSuccess()) {
+                            ReferenceCountUtil.release(msg);
+                        }
+                    });
+
+                    // 使用AtomicBoolean来替代同步块，确保连接状态的原子操作
+                    if (isConnected.compareAndSet(false, true)) {
+                        Object obj;
+                        while ((obj = requestQueue.poll()) != null) {
+                            Object finalObj = obj;
+                            future.channel().writeAndFlush(obj).addListener((ChannelFutureListener) flushFuture -> {
+                                if (!flushFuture.isSuccess()) {
+                                    ReferenceCountUtil.release(finalObj);
+                                }
+                            });
+                        }
                     }
                 } else {
-                    synchronized (getRequestList()) {
-                        getRequestList().forEach(obj -> ReferenceCountUtil.release(obj));
-                        getRequestList().clear();
+                    // 连接失败，释放队列中的所有资源
+                    Object obj;
+                    while ((obj = requestQueue.poll()) != null) {
+                        ReferenceCountUtil.release(obj);
                     }
                     getExceptionHandle().beforeCatch(channel, future.cause());
-                    future.channel().close();
-                    channel.close();
+                    // 确保连接和资源在异常时被关闭和释放
+                    try {
+                        future.channel().close();
+                    } finally {
+                        channel.close();
+                    }
                 }
             });
         } else {
-            synchronized (getRequestList()) {
-                if (getIsConnect()) {
-                    getChannelFuture().channel().writeAndFlush(msg);
-                } else {
-                    getRequestList().add(msg);
-                }
+            // 如果尚未连接，消息加入队列；否则直接发送
+            if (isConnected.get()) {
+                getChannelFuture().channel().writeAndFlush(msg).addListener((ChannelFutureListener) flushFuture -> {
+                    if (!flushFuture.isSuccess()) {
+                        ReferenceCountUtil.release(msg);
+                    }
+                });
+            } else {
+                requestQueue.add(msg);
             }
         }
     }
