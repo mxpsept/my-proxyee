@@ -102,7 +102,7 @@ new HttpProxyServer()
 
 由于项目附带的根证书和私钥是公开的，所以只适用于本地开发调试使用，在正式环境使用时请自行生成根证书和私钥，否则会存在风险。
 
-- 通过运行`com.github.monkeywie.proxyee.crt.CertUtil`类的 main 方法生成
+- 通过运行`crt.proxyee.com.proxy.CertUtil`类的 main 方法生成
 
 - 通过 openssl
 

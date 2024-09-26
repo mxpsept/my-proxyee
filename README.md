@@ -102,7 +102,7 @@ You can use the CertDownIntercept interceptor to enable the web certificate down
 
 Since the root certificate and private key attached to the project are public, they are only suitable for local development and debugging, please generate your own root certificate and private key when using in the official environment, otherwise there will be risks.
 
-- running the main method of the`com.github.monkeywie.proxyee.crt.CertUtil` class
+- running the main method of the`crt.proxyee.com.proxy.CertUtil` class
 
 - use openssl
 
